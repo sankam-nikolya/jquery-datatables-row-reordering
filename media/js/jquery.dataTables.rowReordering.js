@@ -1,103 +1,88 @@
+/**
+ * @file jquery.dataTables.rowReordering.js
+ * @version v1.3.0
+ * 
+ * @forked_from https://code.google.com/p/jquery-datatables-row-reordering/
+ * 
+ * History:
+ * v1.3.0
+ *  - new options
+ *      - osSortableHandle, fnDrawCallback, fnGetPosFromTd, bDisableColumnSorting
+ *  - change the names of some parameter in AJAX request ("fromPosition" --> "from", toPosition --> "to")
+ *  - replace the direction strings in the AJAX request and in code:
+ *          'forward' --> 'down' , 'backward' --> 'up'
+ */
 /*
-* File:        jquery.dataTables.rowReordering.js
-* Version:     1.2.1.
-* Author:      Jovan Popovic 
-* 
-* Copyright 2013 Jovan Popovic, all rights reserved.
-*
-* This source file is free software, under either the GPL v2 license or a
-* BSD style license, as supplied with this software.
-* 
-* This source file is distributed in the hope that it will be useful, but 
-* WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY 
-* or FITNESS FOR A PARTICULAR PURPOSE. 
-* 
-* Parameters:
-* @iIndexColumn     int         Position of the indexing column
-* @sURL             String      Server side page tat will be notified that order is changed
-* @iGroupingLevel   int         Defines that grouping is used
-*/
+ * !!!!!!!!!!!!!!!!!!!!!!!!!
+ * !!   v1.2.0 README :   !!
+ * !!!!!!!!!!!!!!!!!!!!!!!!!
+ * 
+ * File:        jquery.dataTables.rowReordering.js
+ * Version:     1.2.0.
+ * Author:      Jovan Popovic
+ * 
+ * Copyright 2013 Jovan Popovic, all rights reserved.
+ *
+ * This source file is free software, under either the GPL v2 license or a
+ * BSD style license, as supplied with this software.
+ * 
+ * This source file is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+ * or FITNESS FOR A PARTICULAR PURPOSE.
+ * 
+ * Parameters:
+ * @iIndexColumn     int         Position of the indexing column
+ * @sURL             String      Server side page tat will be notified that order is changed
+ * @iGroupingLevel   int         Defines that grouping is used
+ */
 (function ($) {
 
-	"use strict";
+    "use strict";
     $.fn.rowReordering = function (options) {
 
-        function _fnStartProcessingMode(oTable) {
-            ///<summary>
-            ///Function that starts "Processing" mode i.e. shows "Processing..." dialog while some action is executing(Default function)
-            ///</summary>
-
-            if (oTable.fnSettings().oFeatures.bProcessing) {
-                $(".dataTables_processing").css('visibility', 'visible');
+        function fnCancelSorting(oTable, tbody, properties, iLogLevel, sMessage) {
+            tbody.sortable('cancel');
+            if(iLogLevel<=properties.iLogLevel){
+                if(sMessage!= undefined){
+                    properties.fnAlert('AJAX error: '+sMessage, "");
+                }else{
+                    properties.fnAlert("Row cannot be moved", "");
+                }
             }
-        }
-
-        function _fnEndProcessingMode(oTable) {
-            ///<summary>
-            ///Function that ends the "Processing" mode and returns the table in the normal state(Default function)
-            ///</summary>
-
-            if (oTable.fnSettings().oFeatures.bProcessing) {
-                $(".dataTables_processing").css('visibility', 'hidden');
-            }
-        }
-
-		///Not used
-        function fnGetStartPosition(oTable, sSelector) {
-            var iStart = 1000000;
-            $(sSelector, oTable).each(function () {
-                iPosition = parseInt(oTable.fnGetData(this, properties.iIndexColumn));
-                if (iPosition < iStart)
-                    iStart = iPosition;
-            });
-            return iStart;
-        }
-		
-		function fnCancelSorting(oTable, tbody, properties, iLogLevel, sMessage) {
-			tbody.sortable('cancel');
-			if(iLogLevel<=properties.iLogLevel){
-				if(sMessage!= undefined){
-					properties.fnAlert(sMessage, "");
-				}else{
-					properties.fnAlert("Row cannot be moved", "");
-				}
-			}
-			properties.fnEndProcessingMode(oTable);
+            properties.fnEndProcessingMode(oTable);
         }
 
         function fnGetState(oTable, sSelector, id) {
-
             var tr = $("#" + id, oTable);
-            var iCurrentPosition = oTable.fnGetData(tr[0], properties.iIndexColumn);
-            var iNewPosition = -1; // fnGetStartPosition(sSelector);
+            var iCurrentPosition = parseInt( properties.fnGetPosFromTd(  oTable.fnGetData(tr[0], properties.iIndexColumn)  ) );
+            var iNewPosition = -1;
             var sDirection;
             var trPrevious = tr.prev(sSelector);
             if (trPrevious.length > 0) {
-                iNewPosition = parseInt(oTable.fnGetData(trPrevious[0], properties.iIndexColumn));
+                iNewPosition = parseInt( properties.fnGetPosFromTd(  oTable.fnGetData(trPrevious[0], properties.iIndexColumn)  ) );
                 if (iNewPosition < iCurrentPosition) {
                     iNewPosition = iNewPosition + 1;
                 }
             } else {
                 var trNext = tr.next(sSelector);
                 if (trNext.length > 0) {
-                    iNewPosition = parseInt(oTable.fnGetData(trNext[0], properties.iIndexColumn));
+                    iNewPosition = parseInt( properties.fnGetPosFromTd(  oTable.fnGetData(trNext[0], properties.iIndexColumn)  ) );
                     if (iNewPosition > iCurrentPosition)//moved back
                         iNewPosition = iNewPosition - 1;
                 }
             }
             if (iNewPosition < iCurrentPosition)
-                sDirection = "back";
+                sDirection = "up";
             else
-                sDirection = "forward";
+                sDirection = "down";
 
-            return { sDirection: sDirection, iCurrentPosition: iCurrentPosition, iNewPosition: iNewPosition };
-
+            return { "sDirection": sDirection, "iCurrentPosition": iCurrentPosition, "iNewPosition": iNewPosition };
         }
 
         function fnMoveRows(oTable, sSelector, iCurrentPosition, iNewPosition, sDirection, id, sGroup) {
             var iStart = iCurrentPosition;
             var iEnd = iNewPosition;
-            if (sDirection == "back") {
+            if (sDirection == "up") {
                 iStart = iNewPosition;
                 iEnd = iCurrentPosition;
             }
@@ -110,20 +95,20 @@
                 if (iStart <= iRowPosition && iRowPosition <= iEnd) {
                     if (tr.id == id) {
                         oTable.fnUpdate(iNewPosition,
-								        oTable.fnGetPosition(tr), // get row position in current model
-								        properties.iIndexColumn,
-								        false); // false = defer redraw until all row updates are done
+                                        oTable.fnGetPosition(tr), // get row position in current model
+                                        properties.iIndexColumn,
+                                        false); // false = defer redraw until all row updates are done
                     } else {
-                        if (sDirection == "back") {
+                        if (sDirection == "up") {
                             oTable.fnUpdate(iRowPosition + 1,
-								        oTable.fnGetPosition(tr), // get row position in current model
-								        properties.iIndexColumn,
-								        false); // false = defer redraw until all row updates are done
+                                        oTable.fnGetPosition(tr), // get row position in current model
+                                        properties.iIndexColumn,
+                                        false); // false = defer redraw until all row updates are done
                         } else {
                             oTable.fnUpdate(iRowPosition - 1,
-								        oTable.fnGetPosition(tr), // get row position in current model
-								        properties.iIndexColumn,
-								        false); // false = defer redraw until all row updates are done
+                                        oTable.fnGetPosition(tr), // get row position in current model
+                                        properties.iIndexColumn,
+                                        false); // false = defer redraw until all row updates are done
                         }
                     }
                 }
@@ -132,7 +117,7 @@
             var oSettings = oTable.fnSettings();
 
             //Standing Redraw Extension
-            //Author: 	Jonathan Hoguet
+            //Author:   Jonathan Hoguet
             //http://datatables.net/plug-ins/api#fnStandingRedraw
             if (oSettings.oFeatures.bServerSide === false) {
                 var before = oSettings._iDisplayStart;
@@ -145,26 +130,65 @@
             oSettings.oApi._fnDraw(oSettings);
         }
 
-        function _fnAlert(message, type) { alert(message); }
+        //var oTable = this;
 
         var defaults = {
+            /**
+             * Disable the sorting in all columns
+             * @var boolean
+             */
+            bDisableColumnSorting: true,
+            /**
+             * Column index, wich is sortable with drag and drop.
+             * @var integer (0 based)
+             */
             iIndexColumn: 0,
-            iStartPosition: 1,
+            // iStartPosition: 1,
+            /**
+             * URL for Ajax request.
+             * @var string
+             */
             sURL: null,
+            /**
+             * type of ajax request
+             * @var string (POST|GET)
+             */
             sRequestType: "POST",
             iGroupingLevel: 0,
-            fnAlert: _fnAlert,
-            fnSuccess: jQuery.noop,
+            /**
+             * Function for error displaying
+             * @param message string
+             * @param type string|int
+             */
+            fnAlert: function (message, type) { alert(message); },
             iLogLevel: 1,
             sDataGroupAttribute: "data-group",
-            fnStartProcessingMode: _fnStartProcessingMode,
-            fnEndProcessingMode: _fnEndProcessingMode,
-            fnUpdateAjaxRequest: jQuery.noop			
+            /**
+             * Function that starts "Processing" mode
+             * @var function
+             * @param oTable Datatables instance
+             */
+            fnStartProcessingMode: function (oTable) {
+                // Show "Processing..." dialog while some action is executing(Default function)
+                if (oTable.fnSettings().oFeatures.bProcessing) $(".dataTables_processing").css('visibility', 'visible');
+            },
+            /**
+             * Function that ends the "Processing" mode and returns the table in the normal state
+             * @var function
+             * @param oTable Datatables instance
+             */
+            fnEndProcessingMode: function (oTable) {
+                // Hide "Processing..." dialog (Default function)
+                if (oTable.fnSettings().oFeatures.bProcessing) $(".dataTables_processing").css('visibility', 'hidden');
+            },
+            fnUpdateAjaxRequest: jQuery.noop,
+
+            osSortableHandle: false,
+            fnDrawCallback: function(oSettings){},
+            fnGetPosFromTd: function(sTdContent){return sTdContent;}
         };
 
         var properties = $.extend(defaults, options);
-
-        var iFrom, iTo;
 
         // Return a helper with preserved width of cells (see Issue 9)
         var tableFixHelper = function(e, tr)
@@ -174,46 +198,81 @@
           $helper.children().each(function(index)
           {
             // Set helper cell sizes to match the original sizes
-            $(this).width($originals.eq(index).width())
+            $(this).width($originals.eq(index).width());
           });
           return $helper;
         };
 
         return this.each(function () {
-		
+
             var oTable = $(this).dataTable();
 
-            var aaSortingFixed = (oTable.fnSettings().aaSortingFixed == null ? new Array() : oTable.fnSettings().aaSortingFixed);
-            aaSortingFixed.push([properties.iIndexColumn, "asc"]);
-
-            oTable.fnSettings().aaSortingFixed = aaSortingFixed;
-
-
-            for (var i = 0; i < oTable.fnSettings().aoColumns.length; i++) {
-                oTable.fnSettings().aoColumns[i].bSortable = false;
-                /*for(var j=0; j<aaSortingFixed.length; j++)
+            // Disable sorting in all columns, if necessary:
+            if (properties.bDisableColumnSorting)
+            {
+                for (var i = 0; i < oTable.fnSettings().aoColumns.length; i++)
                 {
-                if( i == aaSortingFixed[j][0] )
-                oTable.fnSettings().aoColumns[i].bSortable = false;
-                }*/
+                    oTable.fnSettings().aoColumns[i].bSortable = false;
+                }
+                oTable.fnDraw();
+                $('.DataTables_sort_icon', oTable.get(0)).addClass('ui-helper-hidden-accessible');
             }
-            oTable.fnDraw();
+
+            // add plus fnPreDrawCallback function to the dataTable:
+            oTable.fnSettings().aoPreDrawCallback.push({
+                sName: 'rowreordering_predrawcallback',
+                fn: function(oSettings){
+                    if (properties.bDisableColumnSorting) return;
+
+                    var oTable = $(this).dataTable();
+                    var aaSorting = oTable.fnSettings().aaSorting;
+                    var bSortedByIndexColumn =
+                                aaSorting != null
+                                    && aaSorting.length == 1
+                                    && aaSorting[0][0] == properties.iIndexColumn
+                                    //&& aaSorting[0][1] == "asc"
+                    ;
+                    oTable.fnSettings().bSortedByIndexColumn = bSortedByIndexColumn;
+                    var $temp = $("tbody", oTable);
+                    if ( bSortedByIndexColumn && ($temp.hasClass('ui-sortable') || $temp.data( 'ui-sortable' )) )
+                        $temp.sortable('enable');
+                    else
+                        $temp.sortable('disable');
+                }
+            });
+
+            // Add the user defined fnDrawCallback function:
+            if (properties.fnDrawCallback)
+                oTable.fnSettings().aoDrawCallback.push({
+                    sName: 'rowreordering_drawcallback',
+                    fn: properties.fnDrawCallback
+                });
 
             $("tbody", oTable).disableSelection().sortable({
                 cursor: "move",
+                handle: properties.osSortableHandle,
                 helper: tableFixHelper,
                 update: function (event, ui) {
                     var $dataTable = oTable;
                     var tbody = $(this);
                     var sSelector = "tbody tr";
                     var sGroup = "";
-                    if (properties.bGroupingUsed) {
+                    if (properties.bGroupingUsed)
+                    {
                         sGroup = $(ui.item).attr(properties.sDataGroupAttribute);
-                    if(sGroup==null || sGroup==undefined){
-                       fnCancelSorting($dataTable, tbody, properties, 3, "Grouping row cannot be moved");
-                       return;
-                    }
+                        if(sGroup==null || sGroup==undefined)
+                        {
+                           fnCancelSorting($dataTable, tbody, properties, 3, "Grouping row cannot be moved");
+                           return;
+                        }
                         sSelector = "tbody tr[" + properties.sDataGroupAttribute + " ='" + sGroup + "']";
+                    }
+
+                    if (typeof ui.item.context.id == 'undefined' || ui.item.context.id == '')
+                    {
+                        window.alert('The sortable item has no ID attribute!!!');
+                        console.error('The sortable item has no ID attribute!!!');
+                        return;
                     }
 
                     var oState = fnGetState($dataTable, sSelector, ui.item.context.id);
@@ -225,17 +284,16 @@
 
                     if (properties.sURL != null) {
                         properties.fnStartProcessingMode($dataTable);
-						var oAjaxRequest = {
+                        var oAjaxRequest = {
                             url: properties.sURL,
                             type: properties.sRequestType,
                             data: { id: ui.item.context.id,
-                                fromPosition: oState.iCurrentPosition,
-                                toPosition: oState.iNewPosition,
+                                from: oState.iCurrentPosition,
+                                to: oState.iNewPosition,
                                 direction: oState.sDirection,
                                 group: sGroup
                             },
-                            success: function (data) {
-                                properties.fnSuccess(data);
+                            success: function () {
                                 fnMoveRows($dataTable, sSelector, oState.iCurrentPosition, oState.iNewPosition, oState.sDirection, ui.item.context.id, sGroup);
                                 properties.fnEndProcessingMode($dataTable);
                             },
@@ -243,14 +301,14 @@
                                 fnCancelSorting($dataTable, tbody, properties, 1, jqXHR.statusText);
                             }
                         };
-						properties.fnUpdateAjaxRequest(oAjaxRequest, properties, $dataTable);
+                        properties.fnUpdateAjaxRequest(oAjaxRequest, properties, $dataTable);
                         $.ajax(oAjaxRequest);
                     } else {
                         fnMoveRows($dataTable, sSelector, oState.iCurrentPosition, oState.iNewPosition, oState.sDirection, ui.item.context.id, sGroup);
                     }
 
                 }
-            });
+            }); // END  $(...).sortable(...);
 
         });
 
